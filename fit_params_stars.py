@@ -32,7 +32,7 @@ from flax.training import train_state
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("filename", "correction_params_NoPowerSpec/nn_flax_NPS_LS.params", "Output filename")
+flags.DEFINE_string("filename", "correction_params_stellar/starnn_flax.params", "Output filename")
 flags.DEFINE_string("training_sims",'/gpfs02/work/diffusion/neural_ode/CV0',"Simulations used")
 flags.DEFINE_float("Omega_m", 0.3 - 0.049, "")
 flags.DEFINE_float("Omega_b",0.049, "")
@@ -95,7 +95,7 @@ def loss_fn(params, cosmo, target_pos, target_vel, target_pk, scales, model):
         cic_paint(jnp.zeros((FLAGS.mesh_shape,)*3), x),
         boxsize=np.array([FLAGS.box_size]*3),
         kmin=jnp.pi/FLAGS.box_size, dk=2*jnp.pi/FLAGS.box_size
-        
+
     ))(res[0])
     #spec_loss = jnp.mean(jnp.sum((pk/target_pk - 1)**2, axis=-1)) # commented out to turn off powerspec compoenent
     if FLAGS.custom_weight:
@@ -145,7 +145,7 @@ def main(_):
     snap_paths = sorted(glob.glob(
         os.path.join(FLAGS.training_sims, "snapshot_*.hdf5")
     ))#[:2]
-
+'''
     for snapshot in tqdm(snap_paths, desc="Loading snapshots"):
         header   = readgadget.header(snapshot)
         redshift = header.redshift
@@ -181,7 +181,7 @@ def main(_):
         scales.append(1.0 / (1.0 + redshift))
         poss.append(pos)
         vels.append(vel)
-    
+    '''
     #reference arrays
     ref_pos = jnp.stack(poss, axis=0)
     ref_vel = jnp.stack(vels, axis=0)
