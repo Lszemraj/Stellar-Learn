@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 #os.environ["XLA_FLAGS"] = "--xla_gpu_enable_command_buffer="
 
 #%pylab inline
@@ -27,9 +27,10 @@ from jaxpm.pm import linear_field, lpt, make_ode_fn, pm_forces
 from jaxpm.painting import cic_paint, cic_read, compensate_cic,cic_paint_2d
 from nn import NeuralSplineFourierFilter
 from kernels import fftk, gradient_kernel, invlaplace_kernel, longrange_kernel
-from jaxpm.utils import power_spectrum, cross_correlation_coefficients
+#from jaxpm.utils import power_spectrum, cross_correlation_coefficients
+from jaxpm.utils import power_spectrum
 from jax.numpy import stack
-
+'''
 def power_spectrum_1d(field, boxsize, kmin=0.0, dk=0.03):
     shape = field.shape
     boxsize = np.asarray(boxsize)
@@ -63,6 +64,101 @@ def power_spectrum_1d(field, boxsize, kmin=0.0, dk=0.03):
     k_centers = 0.5 * (kbins[:-1] + kbins[1:])[valid[:-1]]
 
     return k_centers, (Psum[valid] / Nsum[valid]) * np.prod(boxsize)
+'''
+def power_spectrum_1d(field, boxsize, kmin=0.0, dk=0.03, kbins=None):
+    shape = field.shape
+    boxsize = np.asarray(boxsize)
+    N = np.prod(shape)
+
+    # FFT and normalize
+    delta_k = jnp.fft.rfftn(field) / N
+    power = (delta_k * delta_k.conj()).real
+
+    # Create k-grid
+    kx = np.fft.fftfreq(shape[0], d=boxsize[0] / shape[0])
+    ky = np.fft.fftfreq(shape[1], d=boxsize[1] / shape[1])
+    kz = np.fft.rfftfreq(shape[2], d=boxsize[2] / shape[2])  # full for binning
+    KX, KY, KZ = np.meshgrid(kx, ky, kz[:shape[2]//2+1], indexing='ij')
+    k_mag = 2 * np.pi * np.sqrt(KX**2 + KY**2 + KZ**2)
+
+    # Flatten arrays
+    k_flat = k_mag.ravel()
+    P_flat = power.ravel()
+
+    # Generate or use provided kbins
+    if kbins is None:
+        kmax = k_flat.max()
+        kbins = np.arange(kmin, kmax + dk, dk)
+
+    # Bin power into 1D spectrum
+    inds = np.digitize(k_flat, kbins) - 1
+    Psum = np.bincount(inds, weights=P_flat, minlength=len(kbins))
+    Nsum = np.bincount(inds, minlength=len(kbins))
+
+    # Avoid div-by-zero
+    valid = (Nsum > 0) & (np.arange(len(Nsum)) < len(kbins) - 1)
+    k_centers = 0.5 * (kbins[:-1] + kbins[1:])[valid[:-1]]
+
+    return k_centers, (Psum[valid] / Nsum[valid]) * np.prod(boxsize)
+
+def cross_correlation_coefficients(field_a,
+                                   field_b,
+                                   boxsize,
+                                   kmin=None,
+                                   dk=None,
+                                   kbins=None):
+    """
+    Calculate the cross-correlation coefficient between two real space fields.
+
+    Args:
+        field_a: real-valued field (e.g. PM density)
+        field_b: real-valued field (e.g. stellar density)
+        boxsize: physical box size in each dimension
+        kmin: optional, minimum k value if kbins is not provided
+        dk: optional, bin width in k if kbins is not provided
+        kbins: optional, array of k bin edges
+
+    Returns:
+        k_centers: central k values for each bin
+        cross_power: cross power spectrum normalized
+    """
+    shape = field_a.shape
+    boxsize = np.asarray(boxsize)
+    N = np.prod(shape)
+
+    # Fourier transforms
+    delta1 = jnp.fft.fftn(field_a) / N
+    delta2 = jnp.fft.fftn(field_b) / N
+    cross = (delta1 * delta2.conj()).real
+
+    # Construct |k| array
+    kx = np.fft.fftfreq(shape[0], d=boxsize[0] / shape[0])
+    ky = np.fft.fftfreq(shape[1], d=boxsize[1] / shape[1])
+    kz = np.fft.fftfreq(shape[2], d=boxsize[2] / shape[2])
+    KX, KY, KZ = np.meshgrid(kx, ky, kz, indexing='ij')
+    k_mag = 2 * np.pi * np.sqrt(KX**2 + KY**2 + KZ**2)
+
+    # Flatten for binning
+    k_flat = k_mag.ravel()
+    cross_flat = cross.ravel()
+
+    # Determine bin edges
+    if kbins is None:
+        assert kmin is not None and dk is not None, "Must provide kmin and dk if kbins not given"
+        kmax = k_flat.max()
+        kbins = np.arange(kmin, kmax + dk, dk)
+
+    inds = np.digitize(k_flat, kbins) - 1
+
+    # Bin cross power
+    Psum = np.bincount(inds, weights=cross_flat, minlength=len(kbins))
+    Nsum = np.bincount(inds, minlength=len(kbins))
+
+    valid = (Nsum > 0) & (np.arange(len(Nsum)) < len(kbins) - 1)
+    k_centers = 0.5 * (kbins[:-1] + kbins[1:])[valid[:-1]]
+
+    cross_power = (Psum[valid] / Nsum[valid]) * np.prod(boxsize)
+    return k_centers, cross_power
 
 ############################################################# pm component 
 mesh_shape= [128, 128, 128]
@@ -136,7 +232,7 @@ rng_seq = PRNGSequence(1)
 
 resi = odeint(make_ode_fn(mesh_shape), [pos_i, vel_i], jnp.array(scales), cosmo) # pm
 
-target_z = 1.5
+target_z = 2.0
 target_a = 1 / (1 + target_z)
 
 # Only search in scales[1:], which correspond to resi[1:], resi[2:], ...
@@ -162,7 +258,7 @@ pm_field = cic_paint(jnp.zeros([128, 128, 128]), pm_scaled)
 # Grids_Mstar_IllustrisTNG_CV_128_z=1.5.npy
 # Grids_Mstar_IllustrisTNG_CV_128_z=2.0.npy
 
-filename = 'Grids_Mstar_IllustrisTNG_CV_128_z=1.5.npy'
+filename = 'Grids_Mstar_IllustrisTNG_CV_128_z=2.0.npy'
 DIR = "/gpfs02/work/diffusion/gridsMstar"
 OUT_DIR  = "images" # saving stuff here
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -222,14 +318,16 @@ print("BoxSize:", box_size)
 
 kmin = 0.0
 dk = 0.05
+kmax = np.pi * (64 / 25)
+kbins = np.arange(kmin, kmax + dk, dk)
 
 # 64^2 version
 downsampled_box = np.array(box_size) 
 
-k_pm, P_pm = power_spectrum_1d(pm_lowres, boxsize=downsampled_box, kmin=kmin, dk=dk)
-k_star, P_star = power_spectrum_1d(stellar_lowres, boxsize=downsampled_box, kmin=kmin, dk=dk)
+k_pm, P_pm = power_spectrum_1d(pm_lowres, boxsize=downsampled_box, kbins = kbins) #kmin=kmin, dk=dk)
+k_star, P_star = power_spectrum_1d(stellar_lowres, boxsize=downsampled_box, kbins=kbins) #kmin=kmin, dk=dk)
 
-k_vals, corr_vals = cross_correlation_coefficients(pm_lowres, stellar_lowres, boxsize=downsampled_box, kmin=kmin, dk=dk)
+k_vals, corr_vals = cross_correlation_coefficients(pm_lowres, stellar_lowres, boxsize=downsampled_box, kbins=kbins) #kmin=kmin, dk=dk)
 
 
 ''' # 128
@@ -246,15 +344,17 @@ print("cross corelation:", corr_vals)
 ###### plot
 r_k = corr_vals / np.sqrt(P_pm * P_star)
 
-plt.plot(k_vals, r_k)
-plt.xscale('log')
-plt.xlabel(r'$k\ [h\,{\rm Mpc}^{-1}]$')
-plt.axhline(1, linestyle='--', color='gray', alpha=0.5)
-plt.ylabel("Cross-correlation coefficient")
-plt.title(f"Cross-correlation: PM vs Stellar Field at $z = {target_z}$")
-plt.grid(True, which='both', ls=':')
-plt.tight_layout()
-plt.savefig(f"images/cross_corr_pm_vs_stellar_z{target_z}.png")
-plt.show()
+fig, ax = plt.subplots(figsize = (16,8))
+ax.plot(k_vals, r_k)
+ax.set_xscale('log')
+ax.set_xlabel(r'$k\ [h\,{\rm Mpc}^{-1}]$', fontsize=16)
+ax.axhline(1, linestyle='--', color='k') #, alpha=0.5)
+ax.set_ylabel(r"$r(k)$", fontsize=16)
+ax.set_title(rf"Cross-corr $r(k)$ PM vs Stellar Field at $z = {target_z}$", fontsize=18)
+#ax.set_title(f"Cross-correlation for PM vs Stellar Field at $z = {target_z}$")
+ax.grid(True, which='both', ls=':')
+fig.tight_layout()
+fig.savefig(f"images/cross_corr_pm_vs_stellar_z{target_z}.png")
+fig.show()
 
 

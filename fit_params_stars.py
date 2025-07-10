@@ -20,6 +20,7 @@ from kernels import fftk, gradient_kernel, invlaplace_kernel as laplace_kernel, 
 from nn import NeuralSplineFourierFilter  # the Flax version
 from jaxpm.utils import power_spectrum
 import glob
+from nn import SimpleCNN
 #import partial
 
 import readgadget
@@ -94,6 +95,7 @@ def loss_fn(params, cosmo, target_pos, target_vel, target_pk, scales, model):
         cic_paint(jnp.zeros((FLAGS.mesh_shape,)*3), x),
         boxsize=np.array([FLAGS.box_size]*3),
         kmin=jnp.pi/FLAGS.box_size, dk=2*jnp.pi/FLAGS.box_size
+        
     ))(res[0])
     #spec_loss = jnp.mean(jnp.sum((pk/target_pk - 1)**2, axis=-1)) # commented out to turn off powerspec compoenent
     if FLAGS.custom_weight:
@@ -114,15 +116,16 @@ def train_step(state, cosmo, target_pos, target_vel, target_pk, scales):
     print(f"Loss: {loss} | ")
     return state, loss
 
-class NNTrainState(train_state.TrainState):
+class CNNTrainState(train_state.TrainState):
     pass
 
-def create_train_state(rng, model):
+
+def create_train_state(rng, model_loaded):
     dummy_x = jnp.zeros((FLAGS.mesh_shape,)*3)
     dummy_a = jnp.ones((1,))
     params = model.init(rng, dummy_x, dummy_a)['params']
     tx = optax.adam(FLAGS.learning_rate)
-    return NNTrainState.create(apply_fn=model, params=params, tx=tx)
+    return CNNTrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 
 def main(_):
@@ -139,7 +142,6 @@ def main(_):
     vels.append(vel_i)
     re = 256 // FLAGS.mesh_shape
 
-    # find every file named snapshot_*.hdf5
     snap_paths = sorted(glob.glob(
         os.path.join(FLAGS.training_sims, "snapshot_*.hdf5")
     ))#[:2]
@@ -194,7 +196,7 @@ def main(_):
     init_key = next(rng_seq)
     #state    = create_train_state(init_key, model)
 
-    model = NeuralSplineFourierFilter(n_knots=16, latent_size=32) # define model
+    model = SimpleCNN(num_channels=64, num_layers=3)
     optimizer = optax.adam(FLAGS.learning_rate) # define optimizer
     
     # try to load existing parameters
