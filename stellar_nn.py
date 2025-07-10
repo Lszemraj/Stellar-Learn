@@ -4,9 +4,9 @@ from flax import linen as nn
 
 #CNN for Star model
 class StarCNN(nn.Module):
-    num_channels: int = 64  #channels
-    num_layers: int = 4     #conv layers
-    kernel_size: int = 3
+    num_channels: int = 1  #channels
+    num_layers: int = 1     #conv layers
+    kernel_size: int = 1
 
     def periodic_pad(self, x, pad): # wrapping padding thing
         return jnp.pad(

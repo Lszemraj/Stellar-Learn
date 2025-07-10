@@ -317,7 +317,7 @@ print("stellar_field shape:", grid3dstellar.shape)
 print("BoxSize:", box_size)
 
 kmin = 0.0
-dk = 0.05
+dk = 0.10
 kmax = np.pi * (64 / 25)
 kbins = np.arange(kmin, kmax + dk, dk)
 
