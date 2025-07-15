@@ -52,6 +52,8 @@ flags.DEFINE_float("lambda_1", 0.1, "")
 
 init_cond = '/gpfs02/work/diffusion/ics_stellar/ic/ics'
 
+
+
 header   = readgadget.header(init_cond)
 BoxSize  = header.boxsize/1e3  #Mpc/h
 Nall     = header.nall         #Total number of particles
@@ -196,7 +198,7 @@ def main(_):
     init_key = next(rng_seq)
     #state    = create_train_state(init_key, model)
 
-    model = SimpleCNN(num_channels=64, num_layers=3)
+    model = StarCNN(num_channels=1, num_layers=1)
     optimizer = optax.adam(FLAGS.learning_rate) # define optimizer
     
     # try to load existing parameters
