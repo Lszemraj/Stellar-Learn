@@ -2,21 +2,23 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
+
 #CNN for Star model
 class StarCNN(nn.Module):
     num_channels: int = 1  #channels
     num_layers: int = 1     #conv layers
     kernel_size: int = 1
 
-    def periodic_pad(self, x, pad): # wrapping padding thing
+    def periodic_pad(self, x, pad):
         return jnp.pad(
             x,
-            ((0, 0),                 
-             (pad, pad),       
-             (pad, pad),             
-             (0, 0)),                 
-            mode='wrap'
-        )
+            ((0, 0),      # batch dim
+             (pad, pad),  # height
+             (pad, pad),  # width
+             (pad, pad),  # depth
+             (0, 0)),     # channels
+         mode='wrap'
+     )
 
     @nn.compact
     def __call__(self, x):
@@ -25,8 +27,8 @@ class StarCNN(nn.Module):
             x = self.periodic_pad(x, pad)
             x = nn.Conv(
                 features=self.num_channels,
-                kernel_size=(self.kernel_size, self.kernel_size),
-                strides=(1, 1),
+                kernel_size=(self.kernel_size, self.kernel_size, self.kernel_size),
+                strides=(1, 1, 1),
                 padding='VALID' 
             )(x)
             x = nn.selu(x)

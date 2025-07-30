@@ -48,7 +48,7 @@ def make_nn_stellar_ode_fn(model, mesh_shape):
         div = sff / delta 
 
         ddden = cic_read(div, delta) # delta density
-
+        print("dden", dden)
         # position update
         dpos = 1. / (a**3 * jnp.sqrt(jc.background.Esqr(cosmo, a))) * vel
 
