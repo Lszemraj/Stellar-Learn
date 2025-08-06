@@ -1,8 +1,9 @@
 import numpy as np
-import osmv 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 os.environ[
     'XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/usr/local/cuda'
+
 from absl import app
 from absl import flags
 import matplotlib.pyplot as plt
@@ -26,13 +27,14 @@ from functools import partial
 from flax import linen as nn
 from flax.training import train_state
 from jaxpm.pm import linear_field, lpt, make_ode_fn
-from stellar.stellar_utils import make_nn_stellar_ode_fn 
+from stellar_utils import make_nn_stellar_ode_fn 
+
 
 ############## TRAINING CODE
 #@jax.jit(static_argnames=["model"])
 def loss_fn(params, nn_model, initial_state, snapshots, target, cosmo):
-    ode_fn = make_nn_stellar_ode_fn(mesh_shape, nn_model, params)
-    result = odeint(ode_fn, initial_state, snapshots, cosmo, rtol=1e-5, atol=1e-5)
+    ode_fn = make_nn_stellar_ode_fn(mesh_shape, nn_model)
+    result = odeint(ode_fn, initial_state, snapshots, cosmo, params, rtol=1e-5, atol=1e-5)
     pred_density = result[-1][-1]  # final stellar density
     return jnp.mean((pred_density - target)**2)  # MSE loss
 
@@ -40,11 +42,16 @@ def loss_fn(params, nn_model, initial_state, snapshots, target, cosmo):
 #@jax.jit(static_argnames=["nn_model"])
 def train_step(params, model, initial_state, snapshots, target, cosmo):
     grads = jax.grad(loss_fn)(params, model, initial_state, snapshots, target, cosmo)
+
+    grad_norm = jnp.sqrt(sum([jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads)]))
+    jax.debug.print("Grad norm: {}", grad_norm)
+
     return jax.tree_util.tree_map(lambda p, g: p - 1e-3 * g, params, grads)  # manual SGD
 
 
+
 loss_fn = jax.jit(loss_fn, static_argnames=["nn_model"])
-train_step = jax.jit(train_step, static_argnames=["model"])
+train_step = jax.jit(train_step,  static_argnames=["model"])
 
 
 camels_baseline = np.load("/gpfs02/work/diffusion/gridsMstar/Grids_Mstar_IllustrisTNG_CV_128_z=0.0.npy")
@@ -80,6 +87,7 @@ losses = []
 
 for epoch in range(100):
     params = train_step(params, model, initial_state, snapshots, target, cosmo)
+    
     if epoch % 10 == 0:
         loss_val = loss_fn(params, model, initial_state, snapshots, target, cosmo)
         print(f"Epoch {epoch}: Loss = {loss_val:.6f}")

@@ -1,6 +1,6 @@
 import numpy as np
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ[
     'XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/usr/local/cuda'
 
@@ -21,34 +21,27 @@ from nn import NeuralSplineFourierFilter  # the Flax version
 from jaxpm.utils import power_spectrum
 import glob
 from stellar_nn import StarCNN
-#import partial
-
 import readgadget
 import optax
 from functools import partial
-
 from flax import linen as nn
 from flax.training import train_state
-
 import jax.numpy as jnp
 import jax_cosmo as jc
-
 from distributed import fft3d, ifft3d, normal_field
 from jaxpm.growth import (dGf2a, dGfa, growth_factor, growth_factor_second,
-                          growth_rate, growth_rate_second)
+                     growth_rate, growth_rate_second)
 from jaxpm.kernels import (PGD_kernel, fftk, gradient_kernel,
                            invlaplace_kernel, longrange_kernel)
 from jaxpm.painting import cic_paint, cic_read
 from stellar_nn import StarCNN
-
 from flax.training import train_state
-
 from jaxpm.pm import linear_field, lpt, make_ode_fn
 
 
-def make_nn_stellar_ode_fn(mesh_shape, model, params):
+def make_nn_stellar_ode_fn(mesh_shape, model):
 
-    def neural_stellarbody_ode(state, a, cosmo):
+    def neural_stellarbody_ode(state, a, cosmo, params):
         """
         state is (position, velocities, density)
         """
